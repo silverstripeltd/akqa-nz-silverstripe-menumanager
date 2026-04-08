@@ -4,6 +4,7 @@ namespace Heyday\MenuManager;
 
 use SilverStripe\AssetAdmin\Forms\UploadField;
 use SilverStripe\Assets\File;
+use SilverStripe\Control\Controller;
 use SilverStripe\CMS\Model\SiteTree;
 use SilverStripe\Forms\CheckboxField;
 use SilverStripe\Forms\FieldList;
@@ -239,16 +240,38 @@ class MenuItem extends DataObject implements PermissionProvider
 
 
     /**
-     * Checks to see if a page has been chosen and if so sets Link to null
-     * This means that used in conjunction with the __get method above
-     * calling $menuItem->Link won't return the Link field of this MenuItem
-     * but rather call the Link method on the associated Page
+     * Clears irrelevant link fields based on the selected link type before saving.
+     *
+     * Because LinkType is not a database field, it is not present
+     * on the model at write time. We must therefore read it directly
+     * from the POST request. Depending on the chosen type, we null out the
+     * fields that don't apply — ensuring, for example, that a PageID left
+     * over from a previous save doesn't override an external URL, and vice versa.
      */
     public function onBeforeWrite()
     {
         parent::onBeforeWrite();
 
-        if ($this->PageID != 0) {
+        if (!Controller::curr()) {
+            return;
+        }
+
+        // As we do not save the LinkType rely on the posted LinkType
+        $request = Controller::curr()->getRequest();
+        $linkType = $request->postVar('LinkType');
+
+        if (!$linkType) {
+            return;
+        }
+
+        if ($linkType === 'external') {
+            $this->PageID = 0;
+            $this->FileID = 0;
+        } elseif ($linkType === 'internal') {
+            $this->Link = null;
+            $this->FileID = 0;
+        } elseif ($linkType === 'file') {
+            $this->PageID = 0;
             $this->Link = null;
         }
 
@@ -257,7 +280,6 @@ class MenuItem extends DataObject implements PermissionProvider
             $this->Anchor = preg_replace('/^#/', '', $this->Anchor);
         }
     }
-
 
     public function getLinkType(): string
     {
